@@ -7,7 +7,6 @@ namespace ProposalService.Api.Controllers;
 
 [ApiController]
 [Route("api/v1/proposals")]
-[Produces("application/json")]
 [ProducesResponseType<ProblemDetails>(400)]
 [ProducesResponseType<ProblemDetails>(500)]
 public sealed class ProposalsController(ICreateProposalUseCase create, IGetProposalByIdUseCase get,

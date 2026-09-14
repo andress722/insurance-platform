@@ -194,4 +194,83 @@ public sealed class ProposalApiIntegrationTests : IAsyncLifetime
         Assert.Equal("validation_failed", problem["code"]?.GetValue<string>());
         Assert.NotNull(problem["traceId"]);
     }
+
+    /// <summary>
+    /// docs/04 section 1: errors travel as RFC 7807 in <c>application/problem+json</c>. A client that negotiates on
+    /// the media type cannot recognise the payload when it is served as plain <c>application/json</c>, so the header
+    /// is part of the contract and not a detail. Covers an application error, a validation error and a failure raised
+    /// by the pipeline itself, which never reaches the controller.
+    /// </summary>
+    [Fact]
+    public async Task ErrorResponses_AreServedAsProblemJson_ForApplicationValidationAndPipelineFailures()
+    {
+        var notFound = await _client.GetAsync($"/api/v1/proposals/{Guid.NewGuid()}");
+        Assert.Equal(HttpStatusCode.NotFound, notFound.StatusCode);
+        Assert.Equal("application/problem+json", notFound.Content.Headers.ContentType?.MediaType);
+
+        var invalid = await _client.PostAsJsonAsync("/api/v1/proposals", new { customerId = "", productCode = "A", insuredAmount = -1m, monthlyPremium = 0m });
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        Assert.Equal("application/problem+json", invalid.Content.Headers.ContentType?.MediaType);
+
+        var notAllowed = await _client.PutAsJsonAsync("/api/v1/proposals", new { status = "approved" });
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, notAllowed.StatusCode);
+        Assert.Equal("application/problem+json", notAllowed.Content.Headers.ContentType?.MediaType);
+    }
+
+    /// <summary>
+    /// docs/04 section 2.1 publishes <c>Location</c> as a path, not an absolute URL. An absolute value leaks the
+    /// host the service happens to answer on, which behind a proxy or gateway is not the host the client called.
+    /// </summary>
+    [Fact]
+    public async Task CreatedResponse_PublishesARelativeLocation_AsDocumented()
+    {
+        var response = await _client.PostAsJsonAsync("/api/v1/proposals", new
+        {
+            customerId = "CUST-LOCATION",
+            productCode = "AUTO_BASIC",
+            insuredAmount = 1000m,
+            monthlyPremium = 10m
+        });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        var id = (await response.Content.ReadFromJsonAsync<JsonObject>())!["id"]!.GetValue<string>();
+        var location = response.Headers.Location;
+        Assert.NotNull(location);
+        Assert.False(location.IsAbsoluteUri);
+        Assert.Equal($"/api/v1/proposals/{id}", location.ToString());
+    }
+
+    /// <summary>
+    /// The timestamp a write returns must be the timestamp a later read returns. The clock has tick resolution and
+    /// <c>timestamptz</c> keeps microseconds, so an untruncated value is echoed at full precision by the write and
+    /// comes back rounded from the database, and a client comparing the two sees a difference that never happened.
+    /// The wire format is asserted too: docs/04 documents the 'Z' designator, not a '+00:00' offset.
+    /// </summary>
+    [Fact]
+    public async Task Timestamps_SurviveTheRoundTripUnchanged_AndUseTheDocumentedZDesignator()
+    {
+        var createResponse = await _client.PostAsJsonAsync("/api/v1/proposals", new
+        {
+            customerId = "CUST-TIMESTAMP",
+            productCode = "AUTO_BASIC",
+            insuredAmount = 1000m,
+            monthlyPremium = 10m
+        });
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonObject>();
+        var id = created!["id"]!.GetValue<string>();
+        var createdAt = created["createdAtUtc"]!.GetValue<string>();
+
+        Assert.EndsWith("Z", createdAt, StringComparison.Ordinal);
+        Assert.DoesNotContain("+00:00", createdAt, StringComparison.Ordinal);
+
+        var afterRead = await (await _client.GetAsync($"/api/v1/proposals/{id}")).Content.ReadFromJsonAsync<JsonObject>();
+        Assert.Equal(createdAt, afterRead!["createdAtUtc"]!.GetValue<string>());
+
+        var decided = await (await _client.PatchAsJsonAsync($"/api/v1/proposals/{id}/status", new { status = "approved" })).Content.ReadFromJsonAsync<JsonObject>();
+        var decidedAt = decided!["updatedAtUtc"]!.GetValue<string>();
+        Assert.EndsWith("Z", decidedAt, StringComparison.Ordinal);
+
+        var afterDecision = await (await _client.GetAsync($"/api/v1/proposals/{id}")).Content.ReadFromJsonAsync<JsonObject>();
+        Assert.Equal(decidedAt, afterDecision!["updatedAtUtc"]!.GetValue<string>());
+    }
 }

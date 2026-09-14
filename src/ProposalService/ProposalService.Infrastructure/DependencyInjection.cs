@@ -6,7 +6,19 @@ using ProposalService.Infrastructure.Persistence;
 
 namespace ProposalService.Infrastructure;
 
-public sealed class SystemClock : IClock { public DateTimeOffset UtcNow => DateTimeOffset.UtcNow; }
+public sealed class SystemClock : IClock
+{
+    // PostgreSQL timestamptz keeps microseconds. Truncating at the source makes the timestamp returned by a
+    // write identical to the one read back afterwards, instead of differing in the last tick.
+    public DateTimeOffset UtcNow
+    {
+        get
+        {
+            var now = DateTimeOffset.UtcNow;
+            return now.AddTicks(-(now.Ticks % TimeSpan.TicksPerMicrosecond));
+        }
+    }
+}
 
 public static class DependencyInjection
 {

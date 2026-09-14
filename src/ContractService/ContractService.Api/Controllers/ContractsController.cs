@@ -7,7 +7,6 @@ namespace ContractService.Api.Controllers;
 
 [ApiController]
 [Route("api/v1/contracts")]
-[Produces("application/json")]
 public sealed class ContractsController(ICreateContractUseCase create, IGetContractByIdUseCase getById, IGetContractByProposalUseCase getByProposal, ILogger<ContractsController> logger) : ControllerBase
 {
     [HttpPost]
@@ -24,7 +23,7 @@ public sealed class ContractsController(ICreateContractUseCase create, IGetContr
         if (!result.IsSuccess) return ApiProblems.From(result.Error!.Value, HttpContext);
 
         var response = ContractResponse.From(result.Value!);
-        return CreatedAtAction(nameof(GetById), new { id = response.Id }, response);
+        return Created($"/api/v1/contracts/{response.Id}", response);
     }
 
     [HttpGet("{id}")]

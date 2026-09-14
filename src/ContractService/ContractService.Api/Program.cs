@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using ContractService.Api.ErrorHandling;
 using ContractService.Api.OpenApi;
+using ContractService.Api.Serialization;
 using ContractService.Application.Contracts;
 using ContractService.Infrastructure;
 using ContractService.Infrastructure.Persistence;
@@ -14,7 +15,8 @@ builder.Services.AddContractInfrastructure(builder.Configuration);
 builder.Services.AddScoped<ICreateContractUseCase, CreateContract>();
 builder.Services.AddScoped<IGetContractByIdUseCase, GetContractById>();
 builder.Services.AddScoped<IGetContractByProposalUseCase, GetContractByProposal>();
-builder.Services.AddControllers().ConfigureApiBehaviorOptions(options =>
+builder.Services.AddControllers().AddJsonOptions(options =>
+    options.JsonSerializerOptions.Converters.Add(new UtcTimestampConverter())).ConfigureApiBehaviorOptions(options =>
     options.InvalidModelStateResponseFactory = context =>
     {
         var response = ApiProblems.From(ContractError.ValidationFailed, context.HttpContext);
