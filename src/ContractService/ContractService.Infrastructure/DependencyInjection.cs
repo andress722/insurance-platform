@@ -72,6 +72,15 @@ public static class DependencyInjection
 
     private sealed class SystemClock : IClock
     {
-        public DateTimeOffset UtcNow => DateTimeOffset.UtcNow;
+        // PostgreSQL timestamptz keeps microseconds. Truncating at the source makes the timestamp returned by a
+        // write identical to the one read back afterwards, instead of differing in the last tick.
+        public DateTimeOffset UtcNow
+        {
+            get
+            {
+                var now = DateTimeOffset.UtcNow;
+                return now.AddTicks(-(now.Ticks % TimeSpan.TicksPerMicrosecond));
+            }
+        }
     }
 }

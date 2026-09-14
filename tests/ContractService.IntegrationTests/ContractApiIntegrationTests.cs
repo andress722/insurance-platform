@@ -167,6 +167,93 @@ public sealed class ContractApiIntegrationTests : IAsyncLifetime
         Assert.Equal(1, count);
     }
 
+
+    /// <summary>
+    /// docs/04 section 1: errors travel as RFC 7807 in <c>application/problem+json</c>. Asserted across the whole
+    /// eligibility matrix, because a dependency failure is exactly when a client leans on the error envelope.
+    /// </summary>
+    [Theory]
+    [InlineData(ProposalEligibilityResult.UnderReview, HttpStatusCode.Conflict)]
+    [InlineData(ProposalEligibilityResult.NotFound, HttpStatusCode.NotFound)]
+    [InlineData(ProposalEligibilityResult.Unavailable, HttpStatusCode.ServiceUnavailable)]
+    [InlineData(ProposalEligibilityResult.InvalidResponse, HttpStatusCode.BadGateway)]
+    public async Task ErrorResponses_AreServedAsProblemJson_AcrossTheEligibilityMatrix(
+        ProposalEligibilityResult remoteStatus, HttpStatusCode expectedHttp)
+    {
+        var proposalId = Guid.NewGuid();
+        _stubGateway.SetEligibility(proposalId, remoteStatus);
+
+        var response = await _client.PostAsJsonAsync("/api/v1/contracts", new { proposalId });
+
+        Assert.Equal(expectedHttp, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+    }
+
+    /// <summary>
+    /// Validation and pipeline failures take a different route than the eligibility errors above and must carry the
+    /// same envelope.
+    /// </summary>
+    [Fact]
+    public async Task ErrorResponses_AreServedAsProblemJson_ForValidationAndPipelineFailures()
+    {
+        var invalid = await _client.PostAsJsonAsync("/api/v1/contracts", new { proposalId = "not-a-uuid" });
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        Assert.Equal("application/problem+json", invalid.Content.Headers.ContentType?.MediaType);
+
+        var notFound = await _client.GetAsync($"/api/v1/contracts/{Guid.NewGuid()}");
+        Assert.Equal(HttpStatusCode.NotFound, notFound.StatusCode);
+        Assert.Equal("application/problem+json", notFound.Content.Headers.ContentType?.MediaType);
+
+        var notAllowed = await _client.DeleteAsync("/api/v1/contracts");
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, notAllowed.StatusCode);
+        Assert.Equal("application/problem+json", notAllowed.Content.Headers.ContentType?.MediaType);
+    }
+
+    /// <summary>
+    /// docs/04 section 3.1 publishes <c>Location</c> as a path. Both services must agree on the form: a client that
+    /// resolves the header the same way against either API is the point of having one documented contract.
+    /// </summary>
+    [Fact]
+    public async Task CreatedResponse_PublishesARelativeLocation_AsDocumented()
+    {
+        var proposalId = Guid.NewGuid();
+        _stubGateway.SetEligibility(proposalId, ProposalEligibilityResult.Approved);
+
+        var response = await _client.PostAsJsonAsync("/api/v1/contracts", new { proposalId });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        var id = (await response.Content.ReadFromJsonAsync<JsonObject>())!["id"]!.GetValue<string>();
+        var location = response.Headers.Location;
+        Assert.NotNull(location);
+        Assert.False(location.IsAbsoluteUri);
+        Assert.Equal($"/api/v1/contracts/{id}", location.ToString());
+    }
+
+    /// <summary>
+    /// The timestamp the creation returns must be the one a later read returns: the clock has tick resolution while
+    /// <c>timestamptz</c> keeps microseconds, so an untruncated value differs between the write echo and the database
+    /// round trip. The 'Z' designator documented in docs/04 is asserted alongside it.
+    /// </summary>
+    [Fact]
+    public async Task Timestamps_SurviveTheRoundTripUnchanged_AndUseTheDocumentedZDesignator()
+    {
+        var proposalId = Guid.NewGuid();
+        _stubGateway.SetEligibility(proposalId, ProposalEligibilityResult.Approved);
+
+        var created = await (await _client.PostAsJsonAsync("/api/v1/contracts", new { proposalId })).Content.ReadFromJsonAsync<JsonObject>();
+        var id = created!["id"]!.GetValue<string>();
+        var contractedAt = created["contractedAtUtc"]!.GetValue<string>();
+
+        Assert.EndsWith("Z", contractedAt, StringComparison.Ordinal);
+        Assert.DoesNotContain("+00:00", contractedAt, StringComparison.Ordinal);
+
+        var byId = await (await _client.GetAsync($"/api/v1/contracts/{id}")).Content.ReadFromJsonAsync<JsonObject>();
+        Assert.Equal(contractedAt, byId!["contractedAtUtc"]!.GetValue<string>());
+
+        var byProposal = await (await _client.GetAsync($"/api/v1/contracts/by-proposal/{proposalId}")).Content.ReadFromJsonAsync<JsonObject>();
+        Assert.Equal(contractedAt, byProposal!["contractedAtUtc"]!.GetValue<string>());
+    }
+
     private sealed class StubProposalGateway : IProposalGateway
     {
         private readonly Dictionary<Guid, ProposalEligibilityResult> _eligibilities = [];

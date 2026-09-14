@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using ProposalService.Api.ErrorHandling;
 using ProposalService.Api.OpenApi;
+using ProposalService.Api.Serialization;
 using ProposalService.Application.Proposals;
 using ProposalService.Infrastructure;
 using ProposalService.Infrastructure.Persistence;
@@ -14,7 +15,8 @@ builder.Logging.AddJsonConsole(options => options.IncludeScopes = true);
 var connection = builder.Configuration.GetConnectionString("ProposalDb");
 if (string.IsNullOrWhiteSpace(connection)) throw new InvalidOperationException("ConnectionStrings:ProposalDb is required.");
 builder.Services.AddProposalInfrastructure(connection);
-builder.Services.AddControllers();
+builder.Services.AddControllers().AddJsonOptions(options =>
+    options.JsonSerializerOptions.Converters.Add(new UtcTimestampConverter()));
 builder.Services.Configure<ApiBehaviorOptions>(options => options.InvalidModelStateResponseFactory = context =>
     ApiErrors.Create(context.HttpContext, new Error("validation_failed", "One or more fields are invalid.", context.ModelState.Keys.FirstOrDefault() ?? "request")));
 builder.Services.AddExceptionHandler<UnexpectedExceptionHandler>();
