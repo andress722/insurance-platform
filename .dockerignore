@@ -1,0 +1,15 @@
+**/.git
+**/.github
+**/.vs
+**/.vscode
+**/.idea
+**/bin
+**/obj
+**/TestResults
+**/*.user
+**/*.suo
+.env
+.env.*
+!Directory.Build.props
+!Directory.Packages.props
+!global.json

@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-and-test:
+    name: Build, Test & Smoke
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore dependencies
+        run: dotnet restore InsurancePlatform.sln
+
+      - name: Verify code formatting
+        run: dotnet format InsurancePlatform.sln --verify-no-changes --no-restore
+
+      - name: Build solution (Release)
+        run: dotnet build InsurancePlatform.sln -c Release --no-restore
+
+      - name: Run unit, architecture and integration tests
+        run: dotnet test InsurancePlatform.sln -c Release --no-build --collect:"XPlat Code Coverage"
+
+      - name: Build Docker Compose services
+        run: docker compose build
+
+      - name: Start Docker Compose environment
+        run: docker compose up -d --wait
+
+      - name: Run smoke tests
+        run: |
+          chmod +x ./scripts/smoke-test.sh
+          ./scripts/smoke-test.sh
+
+      - name: Teardown Docker Compose environment
+        if: always()
+        run: docker compose down -v

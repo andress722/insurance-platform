@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <PackageReference Include="Swashbuckle.AspNetCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../ProposalService.Application/ProposalService.Application.csproj" />
+    <ProjectReference Include="../ProposalService.Infrastructure/ProposalService.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

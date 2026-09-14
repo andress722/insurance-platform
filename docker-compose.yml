@@ -1,0 +1,88 @@
+services:
+  proposal-db:
+    image: postgres:16-alpine
+    container_name: proposal-db
+    environment:
+      POSTGRES_DB: ${PROPOSAL_DB_NAME:-proposals}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - proposal_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${PROPOSAL_DB_NAME:-proposals}"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 3s
+    restart: unless-stopped
+
+  contract-db:
+    image: postgres:16-alpine
+    container_name: contract-db
+    environment:
+      POSTGRES_DB: ${CONTRACT_DB_NAME:-contracts}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - contract_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${CONTRACT_DB_NAME:-contracts}"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 3s
+    restart: unless-stopped
+
+  proposal-api:
+    build:
+      context: .
+      dockerfile: src/ProposalService/ProposalService.Api/Dockerfile
+    container_name: proposal-api
+    ports:
+      - "${PROPOSAL_API_PORT:-5101}:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__ProposalDb: "Host=proposal-db;Database=${PROPOSAL_DB_NAME:-proposals};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:-postgres}"
+      Database__MigrateOnStartup: "${DATABASE_MIGRATE_ON_STARTUP:-true}"
+    depends_on:
+      proposal-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health/ready || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  contract-api:
+    build:
+      context: .
+      dockerfile: src/ContractService/ContractService.Api/Dockerfile
+    container_name: contract-api
+    ports:
+      - "${CONTRACT_API_PORT:-5102}:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__ContractDb: "Host=contract-db;Database=${CONTRACT_DB_NAME:-contracts};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:-postgres}"
+      ProposalApi__BaseUrl: "http://proposal-api:8080"
+      ProposalApi__TimeoutSeconds: "${PROPOSAL_API_TIMEOUT_SECONDS:-2}"
+      ProposalApi__AttemptTimeoutSeconds: "${PROPOSAL_API_ATTEMPT_TIMEOUT_SECONDS:-0.8}"
+      ProposalApi__RetryCount: "${PROPOSAL_API_RETRY_COUNT:-1}"
+      Database__MigrateOnStartup: "${DATABASE_MIGRATE_ON_STARTUP:-true}"
+    depends_on:
+      contract-db:
+        condition: service_healthy
+      proposal-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health/ready || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  proposal_db_data:
+  contract_db_data:

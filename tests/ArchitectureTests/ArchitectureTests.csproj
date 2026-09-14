@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="coverlet.collector">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/ProposalService/ProposalService.Domain/ProposalService.Domain.csproj" />
+    <ProjectReference Include="../../src/ProposalService/ProposalService.Application/ProposalService.Application.csproj" />
+    <ProjectReference Include="../../src/ProposalService/ProposalService.Infrastructure/ProposalService.Infrastructure.csproj" />
+    <ProjectReference Include="../../src/ProposalService/ProposalService.Api/ProposalService.Api.csproj" />
+    <ProjectReference Include="../../src/ContractService/ContractService.Domain/ContractService.Domain.csproj" />
+    <ProjectReference Include="../../src/ContractService/ContractService.Application/ContractService.Application.csproj" />
+    <ProjectReference Include="../../src/ContractService/ContractService.Infrastructure/ContractService.Infrastructure.csproj" />
+    <ProjectReference Include="../../src/ContractService/ContractService.Api/ContractService.Api.csproj" />
+  </ItemGroup>
+</Project>
